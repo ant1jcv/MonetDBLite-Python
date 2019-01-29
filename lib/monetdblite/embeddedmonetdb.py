@@ -143,10 +143,17 @@ def sql(query, client=None):
 
 
 def __convert_pandas_to_numpy_dict__(df):
-    if type(df) == pandas.DataFrame:
+    """Convert a pandas.DataFrame to a numpy.array dict
+       Faster than previous method & maintain datetime pandas.Series."""
+
+   if type(df) == pandas.DataFrame:
         res = {}
-        for tpl in df.to_dict().items():
-            res[tpl[0]] = numpy.array(list(tpl[1].values()))
+        for serie in df:
+            if df[serie].dtype in ['object', 'category']:
+                # consider object as strings
+                res[serie] = numpy.array(df[serie], dtype=numpy.unicode_)
+            else:
+                res[serie] = numpy.array(df[serie])
         return res
     return df
 
@@ -192,7 +199,7 @@ def create(table, values, schema=None, client=None):
     if schema is None:
         schema = "sys"
     for key, value in values.items():
-        arr = numpy.array(value)
+        arr = numpy.array(value) # isn't value already a numpy.array?
         if arr.dtype == numpy.bool:
             column_type = "BOOLEAN"
         elif arr.dtype == numpy.int8:
@@ -207,16 +214,18 @@ def create(table, values, schema=None, client=None):
             column_type = 'REAL'
         elif arr.dtype == numpy.float64:
             column_type = 'DOUBLE'
+        elif arr.dtype == numpy.datetime:
+            column_type = 'DATETIME'
         elif numpy.issubdtype(arr.dtype, numpy.str_) or numpy.issubdtype(arr.dtype, numpy.unicode_):
             column_type = 'STRING'
         else:
             raise Exception('Unsupported dtype: %s' % (str(arr.dtype)))
         column_types.append(column_type)
     query = 'CREATE TABLE %s.%s (' % (monetize.monet_identifier_escape(schema), monetize.monet_identifier_escape(table))
-    index = 0
-    for key in values.keys():
+    
+    for index, key in enumerate(values.keys()):
         query += '%s %s, ' % (monetize.monet_identifier_escape(key), column_types[index])
-        index += 1
+        # @TODO use join
     query = query[:-2] + ");"
     # create the table
     sql(query, client=client)
